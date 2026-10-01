@@ -161,6 +161,13 @@ footer{color:var(--sub); font-size:.75rem; text-align:center; padding:22px 0 6px
       <li><a href="#" data-goto="wordpdf" data-cat="documents">Word (.docx) → PDF</a></li>
     </ul>
   </details>
+  <details>
+    <summary>Extras</summary>
+    <ul>
+      <li><a href="#" data-goto="breakout" data-cat="games">Block Breaker game</a></li>
+      <li><a href="#" data-goto="snake" data-cat="games">Snake game</a></li>
+    </ul>
+  </details>
 </div>
 
 <div id="libBanner" class="card" style="display:none; border-color:#c62828;">
@@ -191,6 +198,7 @@ footer{color:var(--sub); font-size:.75rem; text-align:center; padding:22px 0 6px
   <button class="tile" data-cat="pdf">📄 PDF<span>Merge, edit, split, compress…</span></button>
   <button class="tile" data-cat="images">🖼️ Images<span>Compress &amp; enhance</span></button>
   <button class="tile" data-cat="documents">📑 Documents<span>Word (.docx) → PDF</span></button>
+  <button class="tile" data-cat="games">🎮 Take a break<span>Block Breaker</span></button>
 </div>
 
 <div id="recentsRow" style="display:none;">
@@ -362,6 +370,36 @@ footer{color:var(--sub); font-size:.75rem; text-align:center; padding:22px 0 6px
   <label style="font-size:.82rem; display:block; margin-bottom:10px;"><input type="radio" name="wordMode" value="formatted"> Keep formatting — bold/headings/tables/images, but pages become images (not searchable)</label>
   <div class="row"><button id="wordBtn">Convert & Download</button></div>
   <div class="status" id="wordStatus"></div>
+</div>
+</section>
+
+<section id="view-games" class="view" style="display:none;">
+<button class="backBtn" data-back>← All tools</button>
+<h2 class="grouphead" style="border-top:none;">Take a break</h2>
+<p class="groupsub">A tiny Block Breaker game — nothing to do with PDFs, just here for fun.</p>
+
+<div class="card" id="breakout">
+  <h2>Block Breaker</h2>
+  <p style="margin-bottom:10px;">Drag left/right (or use arrow keys) to move the paddle. Clear all the blocks!</p>
+  <div style="text-align:center;">
+    <canvas id="bkCanvas" width="320" height="440" style="background:#fff; border:1px solid var(--line); border-radius:10px; max-width:100%; touch-action:none; display:inline-block;"></canvas>
+  </div>
+  <div class="row" style="justify-content:center; margin-top:10px;">
+    <button id="bkStart">Start / Restart</button>
+    <span id="bkScore" style="font-size:.85rem; color:var(--sub); align-self:center;">Score: 0 · Lives: 3</span>
+  </div>
+</div>
+
+<div class="card" id="snake">
+  <h2>Snake</h2>
+  <p style="margin-bottom:10px;">Swipe or use arrow keys to steer. Eat the dots, don't hit the wall or yourself.</p>
+  <div style="text-align:center;">
+    <canvas id="snCanvas" width="320" height="320" style="background:#fff; border:1px solid var(--line); border-radius:10px; max-width:100%; touch-action:none; display:inline-block;"></canvas>
+  </div>
+  <div class="row" style="justify-content:center; margin-top:10px;">
+    <button id="snStart">Start / Restart</button>
+    <span id="snScore" style="font-size:.85rem; color:var(--sub); align-self:center;">Score: 0</span>
+  </div>
 </div>
 </section>
 
@@ -1027,8 +1065,156 @@ document.getElementById('enhSharp').addEventListener('input', (e)=>{
   document.getElementById('enhSVal').textContent = e.target.value;
 });
 
-// ---- View switching (home / pdf / images / documents) ----
+// ---- Block Breaker game ----
+const bkCanvas = document.getElementById('bkCanvas');
+const bkCtx = bkCanvas.getContext('2d');
+let bk = null; // holds live game state, or null when not running
+
+function bkInit(){
+  const cols=6, rows=5, bw=(320-20)/cols, bh=16, top=40, gap=4;
+  const bricks=[];
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++)
+    bricks.push({x:10+c*bw, y:top+r*(bh+gap), w:bw-gap, h:bh, alive:true});
+  return {
+    paddleX:130, paddleW:60, paddleH:10,
+    ballX:160, ballY:400, ballDX:2.6, ballDY:-3.2, ballR:6,
+    bricks, score:0, lives:3, running:true, rafId:null
+  };
+}
+function bkDraw(){
+  bkCtx.clearRect(0,0,320,440);
+  bkCtx.fillStyle = '#22281f';
+  bk.bricks.forEach(b=>{ if(b.alive){ bkCtx.fillStyle = '#b8892f'; bkCtx.fillRect(b.x,b.y,b.w,b.h); } });
+  bkCtx.fillStyle = '#a3312a';
+  bkCtx.beginPath(); bkCtx.arc(bk.ballX, bk.ballY, bk.ballR, 0, Math.PI*2); bkCtx.fill();
+  bkCtx.fillStyle = '#22281f';
+  bkCtx.fillRect(bk.paddleX, 420, bk.paddleW, bk.paddleH);
+  document.getElementById('bkScore').textContent = `Score: ${bk.score} · Lives: ${bk.lives}`;
+}
+function bkStep(){
+  if(!bk || !bk.running) return;
+  bk.ballX += bk.ballDX; bk.ballY += bk.ballDY;
+  if(bk.ballX < bk.ballR){ bk.ballX = bk.ballR; bk.ballDX *= -1; }
+  if(bk.ballX > 320-bk.ballR){ bk.ballX = 320-bk.ballR; bk.ballDX *= -1; }
+  if(bk.ballY < bk.ballR){ bk.ballY = bk.ballR; bk.ballDY *= -1; }
+  if(bk.ballY + bk.ballR >= 420 && bk.ballX >= bk.paddleX && bk.ballX <= bk.paddleX+bk.paddleW && bk.ballDY>0){
+    bk.ballDY *= -1;
+    const hit = (bk.ballX - (bk.paddleX+bk.paddleW/2)) / (bk.paddleW/2);
+    bk.ballDX = hit*4;
+  }
+  bk.bricks.forEach(b=>{
+    if(!b.alive) return;
+    if(bk.ballX > b.x && bk.ballX < b.x+b.w && bk.ballY-bk.ballR < b.y+b.h && bk.ballY+bk.ballR > b.y){
+      b.alive=false; bk.ballDY *= -1; bk.score += 10;
+    }
+  });
+  if(bk.ballY > 440){
+    bk.lives--; 
+    if(bk.lives<=0){ bk.running=false; bkCtx.fillStyle='#a3312a'; bkCtx.font='20px sans-serif'; bkCtx.fillText('Game over — tap Start', 40, 220); return; }
+    bk.ballX=160; bk.ballY=400; bk.ballDX=2.6; bk.ballDY=-3.2;
+  }
+  if(bk.bricks.every(b=>!b.alive)){
+    bk.running=false; bkCtx.fillStyle='#2e7d32'; bkCtx.font='20px sans-serif'; bkCtx.fillText('You win! Tap Start', 60, 220); return;
+  }
+  bkDraw();
+  bk.rafId = requestAnimationFrame(bkStep);
+}
+function bkStart(){
+  if(bk && bk.rafId) cancelAnimationFrame(bk.rafId);
+  bk = bkInit();
+  bkDraw();
+  bk.rafId = requestAnimationFrame(bkStep);
+}
+function bkPause(){
+  if(bk){ bk.running=false; if(bk.rafId) cancelAnimationFrame(bk.rafId); }
+}
+function bkPos(e){
+  const rect = bkCanvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  return (clientX - rect.left) * (320/rect.width);
+}
+bkCanvas.addEventListener('pointermove', (e)=>{
+  if(!bk) return;
+  const x = bkPos(e) - bk.paddleW/2;
+  bk.paddleX = Math.max(0, Math.min(320-bk.paddleW, x));
+});
+window.addEventListener('keydown', (e)=>{
+  if(!bk || document.getElementById('view-games').style.display==='none') return;
+  if(e.key==='ArrowLeft') bk.paddleX = Math.max(0, bk.paddleX-20);
+  if(e.key==='ArrowRight') bk.paddleX = Math.min(320-bk.paddleW, bk.paddleX+20);
+});
+document.getElementById('bkStart').addEventListener('click', bkStart);
+
+// ---- Snake game ----
+const snCanvas = document.getElementById('snCanvas');
+const snCtx = snCanvas.getContext('2d');
+const SN_CELL=16, SN_COLS=20, SN_ROWS=20;
+let sn = null;
+function snRandFood(snake){
+  let p;
+  do{ p = {x:Math.floor(Math.random()*SN_COLS), y:Math.floor(Math.random()*SN_ROWS)}; }
+  while(snake.some(s=>s.x===p.x && s.y===p.y));
+  return p;
+}
+function snInit(){
+  const snake=[{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  return { snake, dir:{x:1,y:0}, nextDir:{x:1,y:0}, food:snRandFood(snake), score:0, running:true, timer:null };
+}
+function snDraw(){
+  snCtx.clearRect(0,0,320,320);
+  snCtx.fillStyle = '#b8892f';
+  snCtx.fillRect(sn.food.x*SN_CELL, sn.food.y*SN_CELL, SN_CELL-1, SN_CELL-1);
+  snCtx.fillStyle = '#22281f';
+  sn.snake.forEach(s=> snCtx.fillRect(s.x*SN_CELL, s.y*SN_CELL, SN_CELL-1, SN_CELL-1));
+  document.getElementById('snScore').textContent = `Score: ${sn.score}`;
+}
+function snTick(){
+  if(!sn || !sn.running) return;
+  sn.dir = sn.nextDir;
+  const head = {x: sn.snake[0].x + sn.dir.x, y: sn.snake[0].y + sn.dir.y};
+  if(head.x<0 || head.x>=SN_COLS || head.y<0 || head.y>=SN_ROWS || sn.snake.some(s=>s.x===head.x && s.y===head.y)){
+    sn.running=false; clearInterval(sn.timer);
+    snCtx.fillStyle='#a3312a'; snCtx.font='20px sans-serif'; snCtx.fillText('Game over — tap Start', 40, 160);
+    return;
+  }
+  sn.snake.unshift(head);
+  if(head.x===sn.food.x && head.y===sn.food.y){ sn.score += 10; sn.food = snRandFood(sn.snake); }
+  else sn.snake.pop();
+  snDraw();
+}
+function snStart(){
+  if(sn && sn.timer) clearInterval(sn.timer);
+  sn = snInit();
+  snDraw();
+  sn.timer = setInterval(snTick, 120);
+}
+function snPause(){ if(sn){ sn.running=false; if(sn.timer) clearInterval(sn.timer); } }
+function snSetDir(dx,dy){
+  if(!sn) return;
+  if(sn.dir.x === -dx && sn.dir.y === -dy) return;
+  sn.nextDir = {x:dx, y:dy};
+}
+window.addEventListener('keydown', (e)=>{
+  if(!sn || document.getElementById('view-games').style.display==='none') return;
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  if(e.key==='ArrowLeft') snSetDir(-1,0);
+  if(e.key==='ArrowRight') snSetDir(1,0);
+  if(e.key==='ArrowUp') snSetDir(0,-1);
+  if(e.key==='ArrowDown') snSetDir(0,1);
+});
+let snTouchStartX=0, snTouchStartY=0;
+snCanvas.addEventListener('touchstart', (e)=>{ snTouchStartX=e.touches[0].clientX; snTouchStartY=e.touches[0].clientY; });
+snCanvas.addEventListener('touchend', (e)=>{
+  const dx = e.changedTouches[0].clientX - snTouchStartX;
+  const dy = e.changedTouches[0].clientY - snTouchStartY;
+  if(Math.abs(dx) > Math.abs(dy)) snSetDir(dx>0?1:-1, 0);
+  else snSetDir(0, dy>0?1:-1);
+});
+document.getElementById('snStart').addEventListener('click', snStart);
+
+// ---- View switching (home / pdf / images / documents / games) ----
 function switchView(cat, scrollToId){
+  if(cat !== 'games'){ bkPause(); snPause(); }
   document.querySelectorAll('.view').forEach(v=> v.style.display = (v.id === 'view-'+cat) ? 'block' : 'none');
   window.scrollTo(0,0);
   if(scrollToId){
